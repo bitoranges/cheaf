@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApiConfig } from '../types';
-import { Key, Save, X, Server, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
+import { Key, Save, X, Activity, Server, CheckCircle2, XCircle, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
 
 interface ApiSettingsProps {
   isOpen: boolean;
@@ -20,7 +20,9 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
     let url = localConfig.backendUrl?.trim();
     if (!url) return;
 
+    // 1. Smart Check: Prevent user from entering the current frontend URL
     const currentOrigin = window.location.origin;
+    // Remove trailing slashes for comparison
     const cleanUrl = url.replace(/\/$/, '');
     const cleanCurrent = currentOrigin.replace(/\/$/, '');
 
@@ -44,6 +46,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       
       const contentType = response.headers.get("content-type");
       
+      // 2. Secondary Check: If response is HTML, it's likely the frontend
       if (contentType && contentType.includes("text/html")) {
         throw new Error("HTML_DETECTED");
       }
@@ -66,7 +69,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       if (e.message === 'HTML_DETECTED') {
         setErrorMessage('连接到了网页而非API。请确认您已在 Zeabur 新建了独立的 Python 服务，并使用了那个服务的域名。');
       } else if (e.message === 'Failed to fetch') {
-        setErrorMessage('无法连接 (Failed to fetch)。可能原因：\n1. 后端服务尚未部署完成（请在 Zeabur 重新部署）。\n2. 跨域问题 (请更新后端代码至 V1.6)。\n3. HTTPS 证书问题。');
+        setErrorMessage('无法连接 (Failed to fetch)。可能原因：\n1. 后端服务尚未部署完成（请在 Zeabur 重新部署）。\n2. 后端代码文件损坏 (请上传修复后的 main.py)。');
       } else {
         setErrorMessage(e.message || '连接失败');
       }
@@ -88,6 +91,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
 
         <div className="p-6 space-y-6">
           
+          {/* Backend URL Config */}
           <div className="p-4 bg-blue-50 text-blue-900 rounded-lg border border-blue-100 shadow-sm">
              <div className="flex items-center gap-2 font-bold mb-2 text-blue-700">
                <Server className="w-4 h-4" /> 后端服务地址
@@ -134,6 +138,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
              </div>
           </div>
 
+          {/* Optional Keys */}
           <div className="border-t border-slate-100 pt-4 opacity-70 hover:opacity-100 transition-opacity">
             <h3 className="text-sm font-bold text-slate-700 mb-3">
               覆盖密钥 (可选)
