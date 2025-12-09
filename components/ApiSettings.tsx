@@ -20,6 +20,18 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
     let url = localConfig.backendUrl?.trim();
     if (!url) return;
 
+    // 1. 智能检查：防止用户填入当前网页的地址
+    const currentOrigin = window.location.origin;
+    // 移除末尾斜杠进行比较
+    const cleanUrl = url.replace(/\/$/, '');
+    const cleanCurrent = currentOrigin.replace(/\/$/, '');
+
+    if (cleanUrl === cleanCurrent) {
+      setTestStatus('failed');
+      setErrorMessage('错误：您填入的是当前【前端网页】的地址！后端 API 必须是 Zeabur 上另一个独立服务的域名。请参考教程新建后端服务。');
+      return;
+    }
+
     setTestStatus('testing');
     setErrorMessage('');
 
@@ -34,7 +46,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       
       const contentType = response.headers.get("content-type");
       
-      // 关键检查：如果返回是 HTML，说明连接到了前端网页而非 API
+      // 2. 二次检查：如果返回是 HTML
       if (contentType && contentType.includes("text/html")) {
         throw new Error("HTML_DETECTED");
       }
@@ -55,9 +67,9 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       setTestStatus('failed');
       
       if (e.message === 'HTML_DETECTED') {
-        setErrorMessage('您输入的是前端网页地址，而非后端 API！请去 Zeabur 找到 Python 后端服务，为其生成一个独立的域名。');
+        setErrorMessage('连接到了网页而非API。请确认您已在 Zeabur 新建了独立的 Python 服务，并使用了那个服务的域名。');
       } else if (e.message === 'Failed to fetch') {
-        setErrorMessage('无法连接。请检查：1.后端是否已部署 2.域名拼写是否正确 3.是否为 https');
+        setErrorMessage('无法连接 (Failed to fetch)。可能原因：\n1. 后端服务尚未部署完成。\n2. 跨域问题 (请更新后端代码至 V1.6)。\n3. HTTPS 证书问题。');
       } else {
         setErrorMessage(e.message || '连接失败');
       }
@@ -85,7 +97,8 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                <Server className="w-4 h-4" /> 后端服务地址
              </div>
              <p className="text-xs text-blue-600/80 mb-3">
-               请填写 Zeabur 上 <strong>Python 后端服务</strong> 的独立域名，不要填当前网页的地址。
+               请填写 Zeabur 上 <strong>Python 后端服务</strong> 的独立域名。<br/>
+               <span className="text-red-500 font-bold">注意：不要填当前网页的地址 ({window.location.host})</span>
              </p>
              <div className="space-y-2">
                 <div className="flex gap-2">
@@ -110,7 +123,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                 
                 {testStatus === 'success' && (
                   <div className="text-green-600 flex items-center gap-1.5 text-xs font-medium bg-green-50 p-2 rounded">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 连接成功：Backend V1.5
+                    <CheckCircle2 className="w-3.5 h-3.5" /> 连接成功：Backend V1.6
                   </div>
                 )}
                 {testStatus === 'failed' && (
@@ -119,7 +132,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                       <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 
                       <span>连接错误</span>
                     </div>
-                    <span className="opacity-90 leading-relaxed">{errorMessage}</span>
+                    <span className="opacity-90 leading-relaxed whitespace-pre-wrap">{errorMessage}</span>
                   </div>
                 )}
              </div>
