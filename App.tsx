@@ -14,13 +14,13 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   
   // Default Config
+  // 重要修改：将 backendUrl 留空，避免用户误用前端地址
   const [apiConfig, setApiConfig] = useState<ApiConfig>({ 
     runwayKey: '', 
     pikaKey: '', 
     jimengAccessKey: '',
     jimengSecretKey: '',
-    // 修正：根据您的截图，正确的地址是 mmf.zeabur.app
-    backendUrl: 'https://mmf.zeabur.app' 
+    backendUrl: '' 
   });
 
   const handleGenerate = async (dishName: string, durationSeconds: number, difficulty: Difficulty) => {
@@ -67,7 +67,6 @@ export default function App() {
   const handleGenerateVideo = async (stepId: string) => {
     if (!apiConfig.backendUrl) {
       setShowSettings(true);
-      alert("请先在设置中配置后端 API 地址");
       return;
     }
 

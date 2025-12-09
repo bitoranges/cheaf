@@ -28,7 +28,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
 
     if (cleanUrl === cleanCurrent) {
       setTestStatus('failed');
-      setErrorMessage('错误：您填入的是当前【前端网页】的地址！后端 API 必须是 Zeabur 上另一个独立服务的域名。请参考教程新建后端服务。');
+      setErrorMessage('错误：您填入的是当前【前端网页】的地址！\n后端 API 必须是 Zeabur 上另一个独立服务的域名。\n请回到 Zeabur 控制台，新建一个服务指向 backend 目录。');
       return;
     }
 
