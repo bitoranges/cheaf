@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApiConfig } from '../types';
-import { Key, Save, X, Activity, Server, CheckCircle2, XCircle, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Key, Save, X, Server, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 
 interface ApiSettingsProps {
   isOpen: boolean;
@@ -20,9 +20,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
     let url = localConfig.backendUrl?.trim();
     if (!url) return;
 
-    // 1. 智能检查：防止用户填入当前网页的地址
     const currentOrigin = window.location.origin;
-    // 移除末尾斜杠进行比较
     const cleanUrl = url.replace(/\/$/, '');
     const cleanCurrent = currentOrigin.replace(/\/$/, '');
 
@@ -46,7 +44,6 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       
       const contentType = response.headers.get("content-type");
       
-      // 2. 二次检查：如果返回是 HTML
       if (contentType && contentType.includes("text/html")) {
         throw new Error("HTML_DETECTED");
       }
@@ -91,7 +88,6 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
 
         <div className="p-6 space-y-6">
           
-          {/* Backend URL Config */}
           <div className="p-4 bg-blue-50 text-blue-900 rounded-lg border border-blue-100 shadow-sm">
              <div className="flex items-center gap-2 font-bold mb-2 text-blue-700">
                <Server className="w-4 h-4" /> 后端服务地址
@@ -138,7 +134,6 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
              </div>
           </div>
 
-          {/* Optional Keys */}
           <div className="border-t border-slate-100 pt-4 opacity-70 hover:opacity-100 transition-opacity">
             <h3 className="text-sm font-bold text-slate-700 mb-3">
               覆盖密钥 (可选)

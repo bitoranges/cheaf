@@ -14,7 +14,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   
   // Default Config
-  // 重要修改：将 backendUrl 留空，避免用户误用前端地址
+  // Keep backendUrl empty to ensure user sets it correctly in settings
   const [apiConfig, setApiConfig] = useState<ApiConfig>({ 
     runwayKey: '', 
     pikaKey: '', 
@@ -76,7 +76,7 @@ export default function App() {
     updateStep(stepId, { videoStatus: 'generating' });
 
     try {
-      // Construct Prompt: 包含更详细的视觉描述
+      // Construct Prompt
       const prompt = `cinematic food shot, ${project.dishName}, ${step.description}, ${step.shotType} shot, ${step.cameraMovement}, 4k, highly detailed, professional lighting`;
       
       // Submit Task
@@ -96,10 +96,8 @@ export default function App() {
             clearInterval(pollInterval);
             updateStep(stepId, { videoStatus: 'failed' });
           }
-          // If running, do nothing and wait for next poll
         } catch (e) {
           console.warn("Poll failed temporarily", e);
-          // Don't fail immediately on network blip
         }
       }, 3000);
 
