@@ -52,7 +52,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       console.error("Connection test failed:", e);
       setTestStatus('failed');
       if (e.message === 'Failed to fetch') {
-        setErrorMessage('无法连接到服务器。可能服务器正在休眠或重启。请尝试点击下方链接直接访问，激活服务器后再试。');
+        setErrorMessage('无法连接到服务器。请检查跨域设置或尝试直接访问下方链接激活服务。');
       } else {
         setErrorMessage(e.message || '连接失败');
       }
