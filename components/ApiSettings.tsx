@@ -69,7 +69,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       if (e.message === 'HTML_DETECTED') {
         setErrorMessage('连接到了网页而非API。请确认您已在 Zeabur 新建了独立的 Python 服务，并使用了那个服务的域名。');
       } else if (e.message === 'Failed to fetch') {
-        setErrorMessage('无法连接 (Failed to fetch)。可能原因：\n1. 后端服务尚未部署完成。\n2. 跨域问题 (请更新后端代码至 V1.6)。\n3. HTTPS 证书问题。');
+        setErrorMessage('无法连接 (Failed to fetch)。可能原因：\n1. 后端服务尚未部署完成（请在 Zeabur 重新部署）。\n2. 跨域问题 (请更新后端代码至 V1.6)。\n3. HTTPS 证书问题。');
       } else {
         setErrorMessage(e.message || '连接失败');
       }
