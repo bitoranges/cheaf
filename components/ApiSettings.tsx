@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApiConfig } from '../types';
-import { Key, Save, X, Activity, Server, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Key, Save, X, Activity, Server, CheckCircle2, XCircle, Loader2, ExternalLink } from 'lucide-react';
 
 interface ApiSettingsProps {
   isOpen: boolean;
@@ -52,7 +52,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       console.error("Connection test failed:", e);
       setTestStatus('failed');
       if (e.message === 'Failed to fetch') {
-        setErrorMessage('无法连接到服务器。可能原因：1. 后端正在重启 2. 跨域(CORS)限制 3. 地址错误');
+        setErrorMessage('无法连接到服务器。可能服务器正在休眠或重启。请尝试点击下方链接直接访问，激活服务器后再试。');
       } else {
         setErrorMessage(e.message || '连接失败');
       }
@@ -109,9 +109,21 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                   </div>
                 )}
                 {testStatus === 'failed' && (
-                  <div className="text-red-600 flex items-start gap-1.5 text-xs bg-red-50 p-2 rounded break-all">
-                    <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 
-                    <span>{errorMessage}</span>
+                  <div className="text-red-600 flex flex-col gap-1.5 text-xs bg-red-50 p-2 rounded break-all">
+                    <div className="flex items-start gap-1.5">
+                      <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 
+                      <span>{errorMessage}</span>
+                    </div>
+                    {localConfig.backendUrl && (
+                      <a 
+                        href={localConfig.backendUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="ml-5 flex items-center gap-1 text-blue-600 underline hover:text-blue-800"
+                      >
+                        <ExternalLink className="w-3 h-3" /> 在浏览器中尝试打开
+                      </a>
+                    )}
                   </div>
                 )}
              </div>
