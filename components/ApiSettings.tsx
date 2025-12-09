@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApiConfig } from '../types';
-import { Key, Save, X, Activity, Server, CheckCircle2, XCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Key, Save, X, Activity, Server, CheckCircle2, XCircle, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
 
 interface ApiSettingsProps {
   isOpen: boolean;
@@ -33,8 +33,10 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       const response = await fetch(`${baseUrl}/`);
       
       const contentType = response.headers.get("content-type");
+      
+      // 关键检查：如果返回是 HTML，说明连接到了前端网页而非 API
       if (contentType && contentType.includes("text/html")) {
-        throw new Error("检测到网页而非API。请确认后端代码已部署且 URL 正确。");
+        throw new Error("HTML_DETECTED");
       }
 
       if (!response.ok) {
@@ -46,13 +48,16 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
         setTestStatus('success');
       } else {
         setTestStatus('failed');
-        setErrorMessage('服务器返回数据不匹配，请检查代码版本');
+        setErrorMessage('服务器响应格式不正确，可能连接了错误的服务');
       }
     } catch (e: any) {
       console.error("Connection test failed:", e);
       setTestStatus('failed');
-      if (e.message === 'Failed to fetch') {
-        setErrorMessage('无法连接到服务器。请检查跨域设置或尝试直接访问下方链接激活服务。');
+      
+      if (e.message === 'HTML_DETECTED') {
+        setErrorMessage('您输入的是前端网页地址，而非后端 API！请去 Zeabur 找到 Python 后端服务，为其生成一个独立的域名。');
+      } else if (e.message === 'Failed to fetch') {
+        setErrorMessage('无法连接。请检查：1.后端是否已部署 2.域名拼写是否正确 3.是否为 https');
       } else {
         setErrorMessage(e.message || '连接失败');
       }
@@ -80,7 +85,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                <Server className="w-4 h-4" /> 后端服务地址
              </div>
              <p className="text-xs text-blue-600/80 mb-3">
-               为了解决跨域问题并保护密钥，请连接到部署好的 Python 后端。
+               请填写 Zeabur 上 <strong>Python 后端服务</strong> 的独立域名，不要填当前网页的地址。
              </p>
              <div className="space-y-2">
                 <div className="flex gap-2">
@@ -92,7 +97,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                       setTestStatus('idle');
                     }}
                     className="flex-1 px-3 py-2 border border-blue-200 rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="例如: https://mmf.zeabur.app"
+                    placeholder="例如: https://cheaf-api.zeabur.app"
                   />
                   <button 
                     onClick={handleTestConnection}
@@ -105,25 +110,16 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                 
                 {testStatus === 'success' && (
                   <div className="text-green-600 flex items-center gap-1.5 text-xs font-medium bg-green-50 p-2 rounded">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 连接成功：Backend V1.3 Ready
+                    <CheckCircle2 className="w-3.5 h-3.5" /> 连接成功：Backend V1.5
                   </div>
                 )}
                 {testStatus === 'failed' && (
-                  <div className="text-red-600 flex flex-col gap-1.5 text-xs bg-red-50 p-2 rounded break-all">
-                    <div className="flex items-start gap-1.5">
-                      <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 
-                      <span>{errorMessage}</span>
+                  <div className="text-red-600 flex flex-col gap-1.5 text-xs bg-red-50 p-2 rounded break-all border border-red-100">
+                    <div className="flex items-start gap-1.5 font-medium">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 
+                      <span>连接错误</span>
                     </div>
-                    {localConfig.backendUrl && (
-                      <a 
-                        href={localConfig.backendUrl} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="ml-5 flex items-center gap-1 text-blue-600 underline hover:text-blue-800"
-                      >
-                        <ExternalLink className="w-3 h-3" /> 在浏览器中尝试打开
-                      </a>
-                    )}
+                    <span className="opacity-90 leading-relaxed">{errorMessage}</span>
                   </div>
                 )}
              </div>
@@ -135,7 +131,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
               覆盖密钥 (可选)
             </h3>
             <p className="text-xs text-slate-500 mb-3">
-              如果不填写，系统将使用服务器端预设的密钥。仅在您需要使用特定账号时填写。
+              如果不填写，系统将使用服务器端预设的密钥。
             </p>
             <div className="space-y-3">
               <div>
