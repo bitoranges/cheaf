@@ -32,6 +32,11 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
       const baseUrl = url.replace(/\/$/, '');
       const response = await fetch(`${baseUrl}/`);
       
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        throw new Error("检测到网页而非API。请确认后端代码已部署且 URL 正确。");
+      }
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -41,12 +46,16 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
         setTestStatus('success');
       } else {
         setTestStatus('failed');
-        setErrorMessage('服务器返回数据不匹配');
+        setErrorMessage('服务器返回数据不匹配，请检查代码版本');
       }
     } catch (e: any) {
       console.error("Connection test failed:", e);
       setTestStatus('failed');
-      setErrorMessage(e.message || '连接失败');
+      if (e.message === 'Failed to fetch') {
+        setErrorMessage('无法连接到服务器。可能原因：1. 后端正在重启 2. 跨域(CORS)限制 3. 地址错误');
+      } else {
+        setErrorMessage(e.message || '连接失败');
+      }
     }
   };
 
@@ -83,7 +92,7 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                       setTestStatus('idle');
                     }}
                     className="flex-1 px-3 py-2 border border-blue-200 rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="例如: https://cheaf-api.zeabur.app"
+                    placeholder="例如: https://mmf.zeabur.app"
                   />
                   <button 
                     onClick={handleTestConnection}
@@ -96,13 +105,13 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ isOpen, onClose, config, onSa
                 
                 {testStatus === 'success' && (
                   <div className="text-green-600 flex items-center gap-1.5 text-xs font-medium bg-green-50 p-2 rounded">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 连接成功：密钥已在服务端配置
+                    <CheckCircle2 className="w-3.5 h-3.5" /> 连接成功：Backend V1.3 Ready
                   </div>
                 )}
                 {testStatus === 'failed' && (
-                  <div className="text-red-600 flex items-start gap-1.5 text-xs bg-red-50 p-2 rounded">
-                    <XCircle className="w-3.5 h-3.5 mt-0.5" /> 
-                    <span>连接失败: {errorMessage}</span>
+                  <div className="text-red-600 flex items-start gap-1.5 text-xs bg-red-50 p-2 rounded break-all">
+                    <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 
+                    <span>{errorMessage}</span>
                   </div>
                 )}
              </div>
