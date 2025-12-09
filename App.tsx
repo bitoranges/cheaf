@@ -6,7 +6,7 @@ import ApiSettings from './components/ApiSettings';
 import { generateCookingScript } from './services/geminiService';
 import { submitVideoTask, checkTaskStatus } from './services/volcengineService';
 import { VideoProject, Difficulty, ScriptStep, Ingredient, ApiConfig } from './types';
-import { Settings, Download, Film, ChevronLeft, PlayCircle } from 'lucide-react';
+import { Settings, Download, Film, ChevronLeft, PlayCircle, WifiOff, Home } from 'lucide-react';
 
 export default function App() {
   const [project, setProject] = useState<VideoProject | null>(null);
@@ -19,7 +19,8 @@ export default function App() {
     pikaKey: '', 
     jimengAccessKey: '',
     jimengSecretKey: '',
-    backendUrl: 'https://cheaf-backend.zeabur.app' // 建议的默认值，用户可修改
+    // 修正：根据您的截图，正确的地址是 mmf.zeabur.app
+    backendUrl: 'https://mmf.zeabur.app' 
   });
 
   const handleGenerate = async (dishName: string, durationSeconds: number, difficulty: Difficulty) => {
@@ -39,7 +40,8 @@ export default function App() {
       };
       setProject(newProject);
     } catch (error) {
-      alert("生成脚本失败。请检查您的网络连接或 Gemini API Key。");
+      console.error("Critical error in generation:", error);
+      alert("程序发生未知错误，请刷新重试。");
     } finally {
       setIsGenerating(false);
     }
@@ -65,7 +67,8 @@ export default function App() {
   const handleGenerateVideo = async (stepId: string) => {
     if (!apiConfig.backendUrl) {
       setShowSettings(true);
-      throw new Error("请先配置后端 API 地址");
+      alert("请先在设置中配置后端 API 地址");
+      return;
     }
 
     const step = project.steps.find(s => s.id === stepId);
@@ -104,81 +107,112 @@ export default function App() {
     } catch (error: any) {
       console.error("Gen Video Error:", error);
       updateStep(stepId, { videoStatus: 'failed' });
-      throw error;
+      alert(`生成失败: ${error.message}`);
     }
   };
 
   if (!project) {
-    return <ProjectSetup onGenerate={handleGenerate} isGenerating={isGenerating} />;
+    return (
+      <>
+        <ProjectSetup onGenerate={handleGenerate} isGenerating={isGenerating} />
+        <div className="fixed bottom-4 left-4 z-50">
+           <button 
+             onClick={() => setShowSettings(true)}
+             className="p-2 bg-white/80 backdrop-blur rounded-full shadow-lg hover:bg-white transition-all text-slate-600"
+             title="API 设置"
+           >
+             <Settings className="w-5 h-5" />
+           </button>
+        </div>
+        <ApiSettings 
+          isOpen={showSettings} 
+          onClose={() => setShowSettings(false)} 
+          config={apiConfig}
+          onSave={setApiConfig}
+        />
+      </>
+    );
   }
 
   return (
     <div className="flex h-screen bg-slate-100 text-slate-900 overflow-hidden font-sans">
+      {/* Sidebar */}
       <aside className="w-16 bg-slate-900 flex flex-col items-center py-6 gap-6 z-20 shadow-xl">
-         <div className="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-500/30">
+         <div className="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-500/30 shrink-0">
             <Film className="text-white w-6 h-6" />
          </div>
-         <div className="flex-1"></div>
-         <button 
-           onClick={() => setShowSettings(true)}
-           className="p-2 text-slate-400 hover:text-white transition-colors"
-           title="API 设置"
-         >
-            <Settings className="w-6 h-6" />
-         </button>
+         
+         <div className="flex-1 flex flex-col gap-4 w-full items-center pt-4">
+            <button 
+              onClick={() => setProject(null)}
+              className="p-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+              title="返回首页"
+            >
+              <Home className="w-6 h-6" />
+            </button>
+         </div>
+
+         <div className="flex flex-col gap-4 w-full items-center pb-4">
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="p-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+              title="设置"
+            >
+              <Settings className="w-6 h-6" />
+            </button>
+         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
-          <div className="flex items-center gap-4">
-             <button 
-               onClick={() => setProject(null)}
-               className="text-slate-500 hover:text-slate-800 flex items-center gap-1 text-sm font-medium"
-             >
-                <ChevronLeft className="w-4 h-4" /> 返回
+      {/* Main Content */}
+       <main className="flex-1 overflow-hidden flex flex-col relative">
+          {/* Header */}
+          <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
+             <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setProject(null)}
+                  className="p-2 hover:bg-slate-100 rounded-full text-slate-500"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div>
+                   <h1 className="text-xl font-bold text-slate-800">{project.dishName}</h1>
+                   <div className="text-xs text-slate-500 flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">{project.difficulty}</span>
+                      <span>•</span>
+                      <span>{project.targetDurationSeconds} 秒</span>
+                   </div>
+                </div>
+             </div>
+             
+             <button className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/10">
+                <Download className="w-4 h-4" />
+                导出脚本
              </button>
-             <h1 className="text-xl font-bold text-slate-800">{project.dishName}</h1>
-             <span className="px-2 py-0.5 rounded bg-brand-50 text-brand-700 text-xs font-semibold border border-brand-100">
-               {project.difficulty}
-             </span>
-             <span className="text-xs text-slate-400 border-l border-slate-200 pl-4 ml-2">
-                目标时长: {project.targetDurationSeconds} 秒
-             </span>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 border border-slate-200 transition-colors">
-              <PlayCircle className="w-4 h-4" /> 预览
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 shadow-sm shadow-brand-500/20 transition-all active:scale-95">
-              <Download className="w-4 h-4" /> 导出视频 (模块 C)
-            </button>
-          </div>
-        </header>
+          </header>
 
-        <div className="flex-1 p-6 grid grid-cols-12 gap-6 overflow-hidden">
-          <div className="col-span-8 h-full min-h-0">
-            <Timeline 
-              steps={project.steps} 
-              onUpdateStep={updateStep} 
-              onGenerateVideo={handleGenerateVideo}
-            />
-          </div>
-
-          <div className="col-span-4 h-full min-h-0 flex flex-col gap-6">
-            <div className="flex-1 min-h-0">
-               <IngredientPanel ingredients={project.ingredients} setIngredients={updateIngredients} />
+          <div className="flex-1 overflow-hidden p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 h-full min-h-0">
+               <Timeline 
+                 steps={project.steps} 
+                 onUpdateStep={updateStep}
+                 onGenerateVideo={handleGenerateVideo}
+               />
+            </div>
+            <div className="h-full min-h-0">
+               <IngredientPanel 
+                 ingredients={project.ingredients} 
+                 setIngredients={updateIngredients}
+               />
             </div>
           </div>
-        </div>
-      </main>
-
-      <ApiSettings 
-        isOpen={showSettings} 
-        onClose={() => setShowSettings(false)} 
-        config={apiConfig}
-        onSave={setApiConfig}
-      />
+       </main>
+       
+       <ApiSettings 
+          isOpen={showSettings} 
+          onClose={() => setShowSettings(false)} 
+          config={apiConfig}
+          onSave={setApiConfig}
+        />
     </div>
   );
 }

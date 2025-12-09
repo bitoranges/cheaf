@@ -8,6 +8,9 @@ export const submitVideoTask = async (config: ApiConfig, prompt: string) => {
   const baseUrl = config.backendUrl.replace(/\/$/, '');
   const proxyUrl = `${baseUrl}/api/generate_video`;
 
+  // 增加调试日志，方便用户确认是否连接了正确的地址
+  console.log(`[Volcengine] Submitting task to: ${proxyUrl}`);
+
   try {
     const response = await fetch(proxyUrl, {
       method: "POST",
