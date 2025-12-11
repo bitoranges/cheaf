@@ -23,10 +23,11 @@ app.add_middleware(
 )
 
 # --- Volcengine Configuration ---
+# FIXED: Updated host from opensapi to visual.volcengineapi.com
 SERVICE = "cv"
 VERSION = "2020-06-01"
 REGION = "cn-north-1"
-HOST = "opensapi.volcengineapi.com"
+HOST = "visual.volcengineapi.com" 
 CONTENT_TYPE = "application/json"
 
 class VideoRequest(BaseModel):
@@ -111,6 +112,7 @@ def make_request(method, action, params, body, ak, sk):
     }
 
     # 7. Send Request
+    print(f"Requesting: {url}?{canonical_querystring}")
     resp = requests.request(method, url, params=query_params, headers=headers, data=payload)
     
     try:
@@ -120,13 +122,13 @@ def make_request(method, action, params, body, ak, sk):
 
 @app.get("/")
 def health_check():
-    return {"status": "Cheaf Backend V1.2 is running", "time": time.time()}
+    return {"status": "Cheaf Backend V1.3 is running", "time": time.time()}
 
 @app.post("/api/generate_video")
 def generate_video(req: VideoRequest):
     # Construct body for CV service
     body = {
-        "req_key": "high_quality_video", # or "video_animation"
+        "req_key": "high_quality_video",
         "prompt": req.prompt,
         "model_version": "v1.3",
         "ratio": req.ratio,
