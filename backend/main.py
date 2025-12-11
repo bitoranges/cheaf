@@ -60,8 +60,9 @@ def call_volcengine(ak, sk, action, body):
 
     # 重要修复：手动序列化 JSON 并以此计算哈希
     # 这样确保发给 requests 的数据与签名的源数据完全一致（字节级匹配）
-    payload_str = json.dumps(body)
-    payload_hash = hashlib.sha256(payload_str.encode('utf-8')).hexdigest()
+    # separators=(',', ':') 去除空格，ensure_ascii=False 允许中文
+    json_bytes = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    payload_hash = hashlib.sha256(json_bytes).hexdigest()
 
     canonical_headers = f"content-type:{CONTENT_TYPE}\nhost:{HOST}\nx-date:{amz_date}\n"
     signed_headers = "content-type;host;x-date"
@@ -84,8 +85,8 @@ def call_volcengine(ak, sk, action, body):
     url = f"https://{HOST}/?{query}"
     
     try:
-        # 使用 data=payload_str 而不是 json=body，避免 requests 库再次序列化导致格式差异
-        response = requests.post(url, headers=headers, data=payload_str, timeout=60)
+        # 使用 data=json_bytes 而不是 json=body，避免 requests 库再次序列化导致格式差异
+        response = requests.post(url, headers=headers, data=json_bytes, timeout=60)
         
         # 尝试解析 JSON 错误
         try:
@@ -110,7 +111,7 @@ def call_volcengine(ak, sk, action, body):
 
 @app.get("/")
 def read_root():
-    return {"status": "Cheaf Backend is running", "version": "1.2"}
+    return {"status": "Cheaf Backend is running", "version": "1.3"}
 
 @app.post("/api/generate_video")
 def generate_video(req: VideoRequest):
