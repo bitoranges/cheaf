@@ -1,19 +1,16 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import uvicorn
-import os
-import json
-import time
+import requests
+import datetime
 import hashlib
 import hmac
-import datetime
-import requests
-from typing import Optional
+import json
+import os
 
 app = FastAPI()
 
-# CORS Configuration
+# 允许跨域请求
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,151 +19,108 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Volcengine Configuration ---
-# FIXED: Updated host from opensapi to visual.volcengineapi.com
+# 火山引擎 (Volcengine) 配置
 SERVICE = "cv"
-VERSION = "2020-06-01"
+VERSION = "2022-08-31" # 已更新为支持视频生成的版本
 REGION = "cn-north-1"
-HOST = "visual.volcengineapi.com" 
+HOST = "visual.volcengineapi.com"
 CONTENT_TYPE = "application/json"
 
 class VideoRequest(BaseModel):
     prompt: str
+    access_key: str
+    secret_key: str
     ratio: str = "16:9"
-    access_key: Optional[str] = None
-    secret_key: Optional[str] = None
 
 class StatusRequest(BaseModel):
     task_id: str
-    access_key: Optional[str] = None
-    secret_key: Optional[str] = None
+    access_key: str
+    secret_key: str
 
-# --- Signature Helper Functions ---
-def sign(key, msg):
-    return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+def get_signature(secret_key, date, region, service, signing_text):
+    k_date = hmac.new(secret_key.encode('utf-8'), date.encode('utf-8'), hashlib.sha256).digest()
+    k_region = hmac.new(k_date, region.encode('utf-8'), hashlib.sha256).digest()
+    k_service = hmac.new(k_region, service.encode('utf-8'), hashlib.sha256).digest()
+    k_signing = hmac.new(k_service, "request".encode('utf-8'), hashlib.sha256).digest()
+    return hmac.new(k_signing, signing_text.encode('utf-8'), hashlib.sha256).hexdigest()
 
-def get_signature_key(key, date_stamp, region_name, service_name):
-    k_date = sign(("k" + key).encode('utf-8'), date_stamp)
-    k_region = sign(k_date, region_name)
-    k_service = sign(k_region, service_name)
-    k_signing = sign(k_service, "request")
-    return k_signing
-
-def make_request(method, action, params, body, ak, sk):
-    # 1. Credential Check
+def call_volcengine(ak, sk, action, body):
     if not ak or not sk:
-        # Try environment variables
-        ak = ak or os.environ.get("JIMENG_ACCESS_KEY")
-        sk = sk or os.environ.get("JIMENG_SECRET_KEY")
-        
-    if not ak or not sk:
-        raise HTTPException(status_code=400, detail="Missing Credentials. Please provide AccessKey and SecretKey in settings or environment variables.")
+        raise HTTPException(status_code=400, detail="Missing Credentials")
 
-    # 2. Prepare Request
-    url = f"https://{HOST}/"
+    method = "POST"
+    path = "/"
+    query = f"Action={action}&Version={VERSION}"
+    
+    # 签名流程
     now = datetime.datetime.utcnow()
     amz_date = now.strftime('%Y%m%dT%H%M%SZ')
-    date_stamp = now.strftime('%Y%m%d')
-    
-    # Body Hash
-    payload = json.dumps(body) if body else ""
-    payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()
+    datestamp = now.strftime('%Y%m%d')
+    credential_scope = f"{datestamp}/{REGION}/{SERVICE}/request"
 
-    # 3. Canonical Request
-    # CanonicalURI
-    canonical_uri = "/"
-    
-    # CanonicalQueryString (Sorted)
-    # Add Action and Version to query params
-    query_params = {
-        "Action": action,
-        "Version": VERSION,
-        **params
-    }
-    canonical_querystring = "&".join([f"{k}={v}" for k, v in sorted(query_params.items())])
-    
-    # CanonicalHeaders (Lowercase, Sorted)
-    canonical_headers = f"content-type:{CONTENT_TYPE}\nhost:{HOST}\nx-content-sha256:{payload_hash}\nx-date:{amz_date}\n"
-    signed_headers = "content-type;host;x-content-sha256;x-date"
-    
-    canonical_request = f"{method}\n{canonical_uri}\n{canonical_querystring}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
-    
-    # 4. String to Sign
+    canonical_headers = f"content-type:{CONTENT_TYPE}\nhost:{HOST}\nx-date:{amz_date}\n"
+    signed_headers = "content-type;host;x-date"
+    payload_hash = hashlib.sha256(json.dumps(body).encode('utf-8')).hexdigest()
+    canonical_request = f"{method}\n{path}\n{query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+
     algorithm = "HMAC-SHA256"
-    credential_scope = f"{date_stamp}/{REGION}/{SERVICE}/request"
     string_to_sign = f"{algorithm}\n{amz_date}\n{credential_scope}\n{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
-    
-    # 5. Calculate Signature
-    signing_key = get_signature_key(sk, date_stamp, REGION, SERVICE)
-    signature = hmac.new(signing_key, string_to_sign.encode('utf-8'), hashlib.sha256).hexdigest()
-    
-    # 6. Authorization Header
+
+    signature = get_signature(sk, datestamp, REGION, SERVICE, string_to_sign)
     authorization_header = f"{algorithm} Credential={ak}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
-    
+
     headers = {
-        "Content-Type": CONTENT_TYPE,
-        "X-Date": amz_date,
-        "X-Content-Sha256": payload_hash,
-        "Authorization": authorization_header,
-        "Host": HOST
+        'Content-Type': CONTENT_TYPE,
+        'X-Date': amz_date,
+        'Authorization': authorization_header,
+        'Host': HOST
     }
 
-    # 7. Send Request
-    print(f"Requesting: {url}?{canonical_querystring}")
-    resp = requests.request(method, url, params=query_params, headers=headers, data=payload)
+    url = f"https://{HOST}/?{query}"
     
     try:
-        return resp.json()
-    except:
-        return {"error": "Failed to parse JSON", "raw": resp.text, "status": resp.status_code}
+        response = requests.post(url, headers=headers, json=body)
+        # 尝试解析 JSON 错误
+        try:
+            resp_json = response.json()
+        except:
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+            return {"status": "error", "message": "Invalid JSON response"}
+
+        if response.status_code != 200:
+             # 透传火山引擎的详细错误
+             detail = resp_json.get("ResponseMetadata", {}).get("Error", {}).get("Message", str(resp_json))
+             raise HTTPException(status_code=response.status_code, detail=detail)
+             
+        return resp_json
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
-def health_check():
-    return {"status": "Cheaf Backend V1.3 is running", "time": time.time()}
+def read_root():
+    return {"status": "Cheaf Backend is running", "version": "1.1"}
 
 @app.post("/api/generate_video")
 def generate_video(req: VideoRequest):
-    # Construct body for CV service
+    # 即梦/火山引擎 视频生成参数
     body = {
-        "req_key": "high_quality_video",
+        "req_key": "video_generation", 
         "prompt": req.prompt,
-        "model_version": "v1.3",
         "ratio": req.ratio,
-        "scale": 1.0,
-        "ddim_steps": 20,
-        "seed": -1
+        "model_version": "v1.3"
     }
-    
-    try:
-        # Action: CVProcess
-        result = make_request("POST", "CVProcess", {}, body, req.access_key, req.secret_key)
-        
-        # Check for upstream API errors
-        if "ResponseMetadata" in result and "Error" in result["ResponseMetadata"]:
-            err = result["ResponseMetadata"]["Error"]
-            raise HTTPException(status_code=400, detail=f"Volcengine Error: {err.get('Message')}")
-            
-        return result
-        
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return call_volcengine(req.access_key, req.secret_key, "CVProcess", body)
 
 @app.post("/api/check_status")
 def check_status(req: StatusRequest):
     body = {
-        "req_key": "high_quality_video",
         "task_id": req.task_id
     }
-    
-    try:
-        result = make_request("POST", "CVProcess", {}, body, req.access_key, req.secret_key)
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # 异步任务查询结果
+    return call_volcengine(req.access_key, req.secret_key, "CVProcessResult", body)
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
