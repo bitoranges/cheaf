@@ -1,16 +1,17 @@
+import json
+import hashlib
+import hmac
+import datetime
+import os
+import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import requests
-import datetime
-import hashlib
-import hmac
-import json
-import os
+from typing import Optional, List
 
 app = FastAPI()
 
-# 允许跨域请求
+# 1. 允许跨域 (CORS) - 允许前端从任意域名调用
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,121 +20,168 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 火山引擎 (Volcengine) 配置
-SERVICE = "cv"
-VERSION = "2022-08-31" # 已更新为支持视频生成的版本
-REGION = "cn-north-1"
+# 2. 火山引擎配置
 HOST = "visual.volcengineapi.com"
-CONTENT_TYPE = "application/json"
+REGION = "cn-north-1"
+SERVICE = "cv"
+VERSION = "2020-08-26"
 
 class VideoRequest(BaseModel):
     prompt: str
-    access_key: str
-    secret_key: str
+    access_key: Optional[str] = None
+    secret_key: Optional[str] = None
     ratio: str = "16:9"
 
 class StatusRequest(BaseModel):
     task_id: str
-    access_key: str
-    secret_key: str
+    access_key: Optional[str] = None
+    secret_key: Optional[str] = None
 
-def get_signature(secret_key, date, region, service, signing_text):
-    k_date = hmac.new(secret_key.encode('utf-8'), date.encode('utf-8'), hashlib.sha256).digest()
-    k_region = hmac.new(k_date, region.encode('utf-8'), hashlib.sha256).digest()
-    k_service = hmac.new(k_region, service.encode('utf-8'), hashlib.sha256).digest()
-    k_signing = hmac.new(k_service, "request".encode('utf-8'), hashlib.sha256).digest()
-    return hmac.new(k_signing, signing_text.encode('utf-8'), hashlib.sha256).hexdigest()
-
-def call_volcengine(ak, sk, action, body):
+# 3. 鉴权与签名逻辑
+def get_credentials(req_ak, req_sk):
+    ak = req_ak if req_ak else os.environ.get("JIMENG_ACCESS_KEY")
+    sk = req_sk if req_sk else os.environ.get("JIMENG_SECRET_KEY")
     if not ak or not sk:
-        raise HTTPException(status_code=400, detail="Missing Credentials")
+        raise Exception("Missing Credentials")
+    return ak, sk
 
+def sign(key, msg):
+    return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+
+def get_signature_key(key, dateStamp, regionName, serviceName):
+    kDate = sign(key.encode('utf-8'), dateStamp)
+    kRegion = sign(kDate, regionName)
+    kService = sign(kRegion, serviceName)
+    kSigning = sign(kService, "request")
+    return kSigning
+
+def make_request(ak, sk, action, params=None, body=None):
     method = "POST"
     path = "/"
-    query = f"Action={action}&Version={VERSION}"
+    content_type = "application/json"
     
-    # 签名流程
-    now = datetime.datetime.utcnow()
-    amz_date = now.strftime('%Y%m%dT%H%M%SZ')
-    datestamp = now.strftime('%Y%m%d')
-    credential_scope = f"{datestamp}/{REGION}/{SERVICE}/request"
+    # Body 处理: 使用 strict separators 去除空格
+    if body:
+        body_str = json.dumps(body, separators=(',', ':'))
+        body_bytes = body_str.encode('utf-8')
+    else:
+        body_bytes = b""
+    
+    t = datetime.datetime.utcnow()
+    amz_date = t.strftime('%Y%m%dT%H%M%SZ')
+    date_stamp = t.strftime('%Y%m%d')
 
-    # 重要修复：手动序列化 JSON 并以此计算哈希
-    # 这样确保发给 requests 的数据与签名的源数据完全一致（字节级匹配）
-    # separators=(',', ':') 去除空格，ensure_ascii=False 允许中文
-    json_bytes = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
-    payload_hash = hashlib.sha256(json_bytes).hexdigest()
-
-    canonical_headers = f"content-type:{CONTENT_TYPE}\nhost:{HOST}\nx-date:{amz_date}\n"
-    signed_headers = "content-type;host;x-date"
-    # 按火山引擎 V4 签名规范，需要将请求体的 SHA256 摘要通过 x-content-sha256 参与签名
+    if params is None: params = {}
+    params["Action"] = action
+    params["Version"] = VERSION
+    
+    # 1. Canonical Query String
+    canonical_querystring = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
+    
+    # 2. Body Hash
+    payload_hash = hashlib.sha256(body_bytes).hexdigest()
+    
+    # 3. Canonical Headers
+    # 必须包含 content-type, host, x-content-sha256, x-date, 且按字母顺序排序
+    # 注意：这里的 \n 必须是真实的换行符
     canonical_headers = (
-        f"content-type:{CONTENT_TYPE}\n"
+        f"content-type:{content_type}\n"
         f"host:{HOST}\n"
         f"x-content-sha256:{payload_hash}\n"
         f"x-date:{amz_date}\n"
     )
+    
     signed_headers = "content-type;host;x-content-sha256;x-date"
     
-    canonical_request = f"{method}\n{path}\n{query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
-
+    # 4. Canonical Request
+    canonical_request = (
+        f"{method}\n"
+        f"{path}\n"
+        f"{canonical_querystring}\n"
+        f"{canonical_headers}\n"
+        f"{signed_headers}\n"
+        f"{payload_hash}"
+    )
+    
+    # 5. String to Sign
     algorithm = "HMAC-SHA256"
-    string_to_sign = f"{algorithm}\n{amz_date}\n{credential_scope}\n{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
-
-    signature = get_signature(sk, datestamp, REGION, SERVICE, string_to_sign)
-    authorization_header = f"{algorithm} Credential={ak}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
-
+    credential_scope = f"{date_stamp}/{REGION}/{SERVICE}/request"
+    string_to_sign = (
+        f"{algorithm}\n"
+        f"{amz_date}\n"
+        f"{credential_scope}\n"
+        f"{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
+    )
+    
+    # 6. Calculate Signature
+    signing_key = get_signature_key(sk, date_stamp, REGION, SERVICE)
+    signature = hmac.new(signing_key, string_to_sign.encode('utf-8'), hashlib.sha256).hexdigest()
+    
+    # 7. Authorization Header
+    authorization_header = (
+        f"{algorithm} Credential={ak}/{credential_scope}, "
+        f"SignedHeaders={signed_headers}, Signature={signature}"
+    )
+    
+    url = f"https://{HOST}{path}?{canonical_querystring}"
     headers = {
-        'Content-Type': CONTENT_TYPE,
+        'Content-Type': content_type,
         'X-Date': amz_date,
         'X-Content-Sha256': payload_hash,
         'Authorization': authorization_header,
         'Host': HOST
     }
-        # 尝试解析 JSON 错误
-        try:
-            resp_json = response.json()
-        except:
-            if response.status_code != 200:
-                print(f"Non-JSON Response: {response.text}")
-                raise HTTPException(status_code=response.status_code, detail=response.text)
-            return {"status": "error", "message": "Invalid JSON response"}
+    
+    return requests.post(url, headers=headers, data=body_bytes)
 
-        if response.status_code != 200:
-             # 透传火山引擎的详细错误
-             print(f"API Error: {resp_json}")
-             detail = resp_json.get("ResponseMetadata", {}).get("Error", {}).get("Message", str(resp_json))
-             raise HTTPException(status_code=response.status_code, detail=detail)
-             
-        return resp_json
-        
-    except Exception as e:
-        print(f"Exception: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+# 4. API 路由
 @app.get("/")
-def read_root():
-    return {"status": "Cheaf Backend is running", "version": "1.3"}
+def home():
+    return {"status": "Cheaf Backend V1.1 Running"}
 
 @app.post("/api/generate_video")
-def generate_video(req: VideoRequest):
-    # 即梦/火山引擎 视频生成参数
-    body = {
-        "req_key": "video_generation", 
-        "prompt": req.prompt,
-        "ratio": req.ratio,
-        "model_version": "v1.3",
-        "binary_data_base64": []
-    }
-    return call_volcengine(req.access_key, req.secret_key, "CVProcess", body)
+async def generate_video(req: VideoRequest):
+    try:
+        ak, sk = get_credentials(req.access_key, req.secret_key)
+        # 注意: 根据实际使用的模型调整 req_key，如 'video_generation', 'videogen_v1.3' 等
+        body = {
+            "req_key": "video_generation", 
+            "text_prompts": [req.prompt],
+            "ratio": req.ratio,
+        }
+        resp = make_request(ak, sk, "CVProcess", params={}, body=body)
+        
+        # 尝试解析 JSON 错误
+        try:
+            data = resp.json()
+        except:
+            data = {"text": resp.text}
+
+        if resp.status_code != 200:
+             raise HTTPException(status_code=resp.status_code, detail=str(data))
+        return data
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/check_status")
-def check_status(req: StatusRequest):
-    body = {
-        "task_id": req.task_id
-    }
-    # 异步任务查询结果
-    return call_volcengine(req.access_key, req.secret_key, "CVProcessResult", body)
+async def check_status(req: StatusRequest):
+    try:
+        ak, sk = get_credentials(req.access_key, req.secret_key)
+        body = {"task_ids": [req.task_id]}
+        resp = make_request(ak, sk, "CVGetResult", params={}, body=body)
+        
+        try:
+            data = resp.json()
+        except:
+            data = {"text": resp.text}
+
+        if resp.status_code != 200:
+             raise HTTPException(status_code=resp.status_code, detail=str(data))
+        return data
+    except Exception as e:
+         print(f"Error: {e}")
+         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
