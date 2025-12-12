@@ -66,6 +66,14 @@ def call_volcengine(ak, sk, action, body):
 
     canonical_headers = f"content-type:{CONTENT_TYPE}\nhost:{HOST}\nx-date:{amz_date}\n"
     signed_headers = "content-type;host;x-date"
+    # 按火山引擎 V4 签名规范，需要将请求体的 SHA256 摘要通过 x-content-sha256 参与签名
+    canonical_headers = (
+        f"content-type:{CONTENT_TYPE}\n"
+        f"host:{HOST}\n"
+        f"x-content-sha256:{payload_hash}\n"
+        f"x-date:{amz_date}\n"
+    )
+    signed_headers = "content-type;host;x-content-sha256;x-date"
     
     canonical_request = f"{method}\n{path}\n{query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
 
@@ -78,16 +86,10 @@ def call_volcengine(ak, sk, action, body):
     headers = {
         'Content-Type': CONTENT_TYPE,
         'X-Date': amz_date,
+        'X-Content-Sha256': payload_hash,
         'Authorization': authorization_header,
         'Host': HOST
     }
-
-    url = f"https://{HOST}/?{query}"
-    
-    try:
-        # 使用 data=json_bytes 而不是 json=body，避免 requests 库再次序列化导致格式差异
-        response = requests.post(url, headers=headers, data=json_bytes, timeout=60)
-        
         # 尝试解析 JSON 错误
         try:
             resp_json = response.json()
