@@ -64,8 +64,14 @@ def call_volcengine(ak, sk, action, body):
     json_bytes = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
     payload_hash = hashlib.sha256(json_bytes).hexdigest()
 
-    canonical_headers = f"content-type:{CONTENT_TYPE}\nhost:{HOST}\nx-date:{amz_date}\n"
-    signed_headers = "content-type;host;x-date"
+    # 按火山引擎 V4 签名规范，需要将请求体的 SHA256 摘要通过 x-content-sha256 参与签名
+    canonical_headers = (
+        f"content-type:{CONTENT_TYPE}\n"
+        f"host:{HOST}\n"
+        f"x-content-sha256:{payload_hash}\n"
+        f"x-date:{amz_date}\n"
+    )
+    signed_headers = "content-type;host;x-content-sha256;x-date"
     
     canonical_request = f"{method}\n{path}\n{query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
 
@@ -78,6 +84,7 @@ def call_volcengine(ak, sk, action, body):
     headers = {
         'Content-Type': CONTENT_TYPE,
         'X-Date': amz_date,
+        'X-Content-Sha256': payload_hash,
         'Authorization': authorization_header,
         'Host': HOST
     }
