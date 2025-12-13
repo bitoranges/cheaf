@@ -84,8 +84,19 @@ export default function App() {
       
       updateStep(stepId, { videoStatus: 'generating', videoTaskId: taskId });
 
-      // Poll Status
+      // Poll Status with Timeout
+      let attempts = 0;
+      const maxAttempts = 120; // 120 * 3s = 6 minutes timeout
+      
       const pollInterval = setInterval(async () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+           clearInterval(pollInterval);
+           updateStep(stepId, { videoStatus: 'failed' });
+           alert("生成超时，请稍后重试。");
+           return;
+        }
+
         try {
           const result = await checkTaskStatus(apiConfig, taskId);
           
@@ -104,7 +115,17 @@ export default function App() {
     } catch (error: any) {
       console.error("Gen Video Error:", error);
       updateStep(stepId, { videoStatus: 'failed' });
-      alert(`生成失败: ${error.message}`);
+      
+      // UX Improvement: Handle common setup errors
+      if (error.message === "MissingCredentials") {
+          alert("鉴权失败：缺少 AccessKey 或 SecretKey。\n请在设置中填写密钥。");
+          setShowSettings(true);
+      } else if (error.message === "BackendOutdated") {
+          alert("【严重错误】后端代码版本过旧！\n\n服务器正在使用旧版 Volcengine API (2020) 导致 404 错误。\n请打开设置 -> 获取后端代码，复制最新代码 (2022版) 并重新部署后端。");
+          setShowSettings(true);
+      } else {
+          alert(`生成失败: ${error.message}`);
+      }
     }
   };
 
