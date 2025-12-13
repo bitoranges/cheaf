@@ -117,7 +117,7 @@ export default function App() {
       updateStep(stepId, { videoStatus: 'failed' });
       
       // UX Improvement: Handle common setup errors
-      if (error.message === "MissingCredentials") {
+      if (error.message === "MissingCredentials" || error.message === "Missing Credentials") {
           alert("鉴权失败：缺少 AccessKey 或 SecretKey。\n请在设置中填写密钥。");
           setShowSettings(true);
       } else if (error.message === "BackendOutdated") {
