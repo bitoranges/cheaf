@@ -11,7 +11,7 @@ from typing import Optional, List
 
 app = FastAPI()
 
-# 1. 允许跨域 (CORS) - 允许前端从任意域名调用
+# 1. CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,11 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. 火山引擎配置
+# 2. Volcengine Configuration (API Version 2022-08-31)
+# Documentation: https://www.volcengine.com/docs/85621/1777001
 HOST = "visual.volcengineapi.com"
 REGION = "cn-north-1"
 SERVICE = "cv"
-VERSION = "2020-08-26"
+VERSION = "2022-08-31"
 
 class VideoRequest(BaseModel):
     prompt: str
@@ -37,7 +38,7 @@ class StatusRequest(BaseModel):
     access_key: Optional[str] = None
     secret_key: Optional[str] = None
 
-# 3. 鉴权与签名逻辑
+# 3. Authentication & Signing Logic
 def get_credentials(req_ak, req_sk):
     ak = req_ak if req_ak else os.environ.get("JIMENG_ACCESS_KEY")
     sk = req_sk if req_sk else os.environ.get("JIMENG_SECRET_KEY")
@@ -55,13 +56,13 @@ def get_signature_key(key, dateStamp, regionName, serviceName):
     kSigning = sign(kService, "request")
     return kSigning
 
-def make_request(ak, sk, action, params=None, body=None):
-    method = "POST"
+def make_request(ak, sk, action, params=None, body=None, method="POST"):
     path = "/"
     content_type = "application/json"
     
-    # Body 处理: 使用 strict separators 去除空格
+    # Handle Body
     if body:
+        # Use separators to avoid spaces in JSON, which can affect signature calculation
         body_str = json.dumps(body, separators=(',', ':'))
         body_bytes = body_str.encode('utf-8')
     else:
@@ -82,8 +83,6 @@ def make_request(ak, sk, action, params=None, body=None):
     payload_hash = hashlib.sha256(body_bytes).hexdigest()
     
     # 3. Canonical Headers
-    # 必须包含 content-type, host, x-content-sha256, x-date, 且按字母顺序排序
-    # 注意：这里的 \n 必须是真实的换行符
     canonical_headers = (
         f"content-type:{content_type}\n"
         f"host:{HOST}\n"
@@ -132,44 +131,53 @@ def make_request(ak, sk, action, params=None, body=None):
         'Host': HOST
     }
     
-    return requests.post(url, headers=headers, data=body_bytes)
+    return requests.request(method, url, headers=headers, data=body_bytes)
 
-# 4. API 路由
+# 4. Routes
 @app.get("/")
 def home():
-    return {"status": "Cheaf Backend V1.1 Running"}
+    return {"status": "Cheaf Backend V1.7 Running (2022 API - VisualGeneration)"}
 
 @app.post("/api/generate_video")
 async def generate_video(req: VideoRequest):
     try:
         ak, sk = get_credentials(req.access_key, req.secret_key)
-        # 注意: 根据实际使用的模型调整 req_key，如 'video_generation', 'videogen_v1.3' 等
+        
+        # 2022-08-31 API uses VisualGeneration (NOT CVProcess)
+        # "req_key" is strictly required. "video_generation" is standard for T2V.
         body = {
             "req_key": "video_generation", 
             "text_prompts": [req.prompt],
             "ratio": req.ratio,
         }
-        resp = make_request(ak, sk, "CVProcess", params={}, body=body)
         
-        # 尝试解析 JSON 错误
+        # Action is VisualGeneration
+        resp = make_request(ak, sk, "VisualGeneration", params={}, body=body, method="POST")
+        
         try:
             data = resp.json()
         except:
             data = {"text": resp.text}
 
         if resp.status_code != 200:
+             # Pass detailed error to frontend for debugging
+             print(f"Backend Error: {resp.status_code} - {data}")
              raise HTTPException(status_code=resp.status_code, detail=str(data))
         return data
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Exception: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/check_status")
 async def check_status(req: StatusRequest):
     try:
         ak, sk = get_credentials(req.access_key, req.secret_key)
-        body = {"task_ids": [req.task_id]}
-        resp = make_request(ak, sk, "CVGetResult", params={}, body=body)
+        
+        # 2022-08-31 API uses GetVisualServiceTask
+        # Important: For GET requests, body is empty, params are in query string.
+        params = {"task_id": req.task_id}
+        
+        resp = make_request(ak, sk, "GetVisualServiceTask", params=params, body={}, method="GET")
         
         try:
             data = resp.json()
@@ -180,7 +188,7 @@ async def check_status(req: StatusRequest):
              raise HTTPException(status_code=resp.status_code, detail=str(data))
         return data
     except Exception as e:
-         print(f"Error: {e}")
+         print(f"Exception: {e}")
          raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
