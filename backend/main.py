@@ -20,12 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Volcengine Configuration (API Version 2020-08-26 - Stable)
-# Documentation: Standard CVProcess Endpoint
+# 2. Volcengine Configuration (API Version 2022-08-31 - Visual Service)
+# Critical Fix: Service must be "visual" not "cv" for VisualGeneration action
 HOST = "visual.volcengineapi.com"
 REGION = "cn-north-1"
-SERVICE = "cv"
-VERSION = "2020-08-26"
+SERVICE = "visual" 
+VERSION = "2022-08-31"
 
 class VideoRequest(BaseModel):
     prompt: str
@@ -136,22 +136,23 @@ def make_request(ak, sk, action, params=None, body=None, method="POST"):
 # 4. Routes
 @app.get("/")
 def home():
-    return {"status": "Cheaf Backend V1.8 Running (2020 API - CVProcess)"}
+    return {"status": "Cheaf Backend V1.9 Running (2022 API - Visual Service)"}
 
 @app.post("/api/generate_video")
 async def generate_video(req: VideoRequest):
     try:
         ak, sk = get_credentials(req.access_key, req.secret_key)
         
-        # 2020-08-26 API uses CVProcess
+        # 2022-08-31 API uses VisualGeneration
+        # req_key="video_generation" is standard for T2V
         body = {
             "req_key": "video_generation", 
             "text_prompts": [req.prompt],
             "ratio": req.ratio,
         }
         
-        # Action is CVProcess
-        resp = make_request(ak, sk, "CVProcess", params={}, body=body, method="POST")
+        # Action is VisualGeneration
+        resp = make_request(ak, sk, "VisualGeneration", params={}, body=body, method="POST")
         
         try:
             data = resp.json()
@@ -159,7 +160,6 @@ async def generate_video(req: VideoRequest):
             data = {"text": resp.text}
 
         if resp.status_code != 200:
-             # Pass detailed error to frontend for debugging
              print(f"Backend Error: {resp.status_code} - {data}")
              raise HTTPException(status_code=resp.status_code, detail=str(data))
         return data
@@ -172,11 +172,11 @@ async def check_status(req: StatusRequest):
     try:
         ak, sk = get_credentials(req.access_key, req.secret_key)
         
-        # 2020-08-26 API uses GetImageStyleResult for status check
-        # Must be POST with task_id in body
-        body = {"task_id": req.task_id}
+        # 2022-08-31 API uses GetVisualServiceTask
+        # Important: GET request for status in this version
+        params = {"task_id": req.task_id}
         
-        resp = make_request(ak, sk, "GetImageStyleResult", params={}, body=body, method="POST")
+        resp = make_request(ak, sk, "GetVisualServiceTask", params=params, body={}, method="GET")
         
         try:
             data = resp.json()
