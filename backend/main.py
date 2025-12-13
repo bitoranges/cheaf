@@ -4,6 +4,7 @@ import hmac
 import datetime
 import os
 import requests
+from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -77,7 +78,10 @@ def make_request(ak, sk, action, params=None, body=None, method="POST"):
     params["Version"] = VERSION
     
     # 1. Canonical Query String
-    canonical_querystring = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
+    # RFC3986 encode query parameters before signing to prevent signature mismatch
+    canonical_querystring = "&".join([
+        f"{quote(str(k), safe='-_.~')}={quote(str(v), safe='-_.~')}" for k, v in sorted(params.items())
+    ])
     
     # 2. Body Hash
     payload_hash = hashlib.sha256(body_bytes).hexdigest()
@@ -130,8 +134,10 @@ def make_request(ak, sk, action, params=None, body=None, method="POST"):
         'Authorization': authorization_header,
         'Host': HOST
     }
-    
-    return requests.request(method, url, headers=headers, data=body_bytes)
+
+    request_body = body_bytes if body_bytes else None
+
+    return requests.request(method, url, headers=headers, data=request_body)
 
 # 4. Routes
 @app.get("/")
@@ -146,8 +152,9 @@ async def generate_video(req: VideoRequest):
         # 2022-08-31 API uses VisualGeneration
         # req_key="video_generation" is standard for T2V
         body = {
-            "req_key": "video_generation", 
-            "text_prompts": [req.prompt],
+            "req_key": "video_generation",
+            # The API expects an array of objects, not raw strings
+            "text_prompts": [{"prompt": req.prompt}],
             "ratio": req.ratio,
         }
         
@@ -160,8 +167,8 @@ async def generate_video(req: VideoRequest):
             data = {"text": resp.text}
 
         if resp.status_code != 200:
-             print(f"Backend Error: {resp.status_code} - {data}")
-             raise HTTPException(status_code=resp.status_code, detail=str(data))
+            print(f"Backend Error: {resp.status_code} - {data}")
+            raise HTTPException(status_code=resp.status_code, detail=str(data))
         return data
     except Exception as e:
         print(f"Exception: {e}")
@@ -176,7 +183,7 @@ async def check_status(req: StatusRequest):
         # Important: GET request for status in this version
         params = {"task_id": req.task_id}
         
-        resp = make_request(ak, sk, "GetVisualServiceTask", params=params, body={}, method="GET")
+        resp = make_request(ak, sk, "GetVisualServiceTask", params=params, body=None, method="GET")
         
         try:
             data = resp.json()
@@ -184,11 +191,11 @@ async def check_status(req: StatusRequest):
             data = {"text": resp.text}
 
         if resp.status_code != 200:
-             raise HTTPException(status_code=resp.status_code, detail=str(data))
+            raise HTTPException(status_code=resp.status_code, detail=str(data))
         return data
     except Exception as e:
-         print(f"Exception: {e}")
-         raise HTTPException(status_code=500, detail=str(e))
+        print(f"Exception: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
